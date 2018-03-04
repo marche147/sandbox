@@ -23,6 +23,7 @@
 	"restrict_ui": false,
 	"timeout": 500000000,
 	"memory": 41943040,
+    "active_process": 1,
 
 	"user": "",
 	"password": "",

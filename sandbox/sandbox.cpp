@@ -300,9 +300,10 @@ HANDLE CraftToken(ConfigFile& config) {
 	std::string password = config.getString("password");
 	std::string integrity_level = config.getString("integrity_level", "mid");
 	bool restrict_token = config.getBool("restricted_token", true);
-	bool remove_priv = config.getBool("remove_priv", true);
+	bool remove_all_priv = config.getBool("remove_all_priv", true);
 	Json::Value deny_sids = config.get("deny_sids");
 	Json::Value restrict_sids = config.get("restrict_sids");
+	Json::Value remove_privs = config.get("remove_privs");
 
 	// use current token
 	if (user == "") {
@@ -345,14 +346,28 @@ HANDLE CraftToken(ConfigFile& config) {
 		DWORD dwRestrictSidCount = 0;
 		PSID_AND_ATTRIBUTES pRestrictSid = NULL;
 		HANDLE hNewToken = NULL;
+		BOOL bSuccess = FALSE;
 
-		if (remove_priv) {
+		if (remove_all_priv) {
 			pRemovePriv = GetTokenPrivileges(hToken);
 			if (!pRemovePriv) {
 				goto blockend;
 			}
 			dwPrivCount = pRemovePriv->PrivilegeCount;
 			pPriv = pRemovePriv->Privileges;
+		}
+		else if (remove_privs.size() > 0) {
+			dwPrivCount = remove_privs.size();
+			pPriv = reinterpret_cast<PLUID_AND_ATTRIBUTES>(halloc(sizeof(LUID_AND_ATTRIBUTES)* dwPrivCount));
+			if (!pPriv) {
+				goto blockend;
+			}
+			for (int index = 0; index < remove_privs.size(); index++) {
+				std::string string_priv = remove_privs[index].asString();
+				if (!LookupPrivilegeValueA(NULL, string_priv.c_str(), &pPriv[index].Luid)) {
+					goto blockend;
+				}
+			}
 		}
 
 		if (deny_sids.size() > 0) {
@@ -383,8 +398,8 @@ HANDLE CraftToken(ConfigFile& config) {
 			}
 		}
 
-		bResult = CreateRestrictedToken(hToken, 0, dwDenySidCount, pSids, dwPrivCount, pPriv, dwRestrictSidCount, pRestrictSid, &hNewToken);
-		if (bResult) {
+		bSuccess = CreateRestrictedToken(hToken, 0, dwDenySidCount, pSids, dwPrivCount, pPriv, dwRestrictSidCount, pRestrictSid, &hNewToken);
+		if (bSuccess) {
 			CloseHandle(hToken);
 			hToken = hNewToken;
 		}
@@ -398,6 +413,10 @@ HANDLE CraftToken(ConfigFile& config) {
 		}
 		if (pRestrictSid) {
 			hfree(pRestrictSid);
+		}
+
+		if (!bSuccess) {
+			goto finished;
 		}
 	}
 
@@ -459,7 +478,9 @@ int main(int argc, char* argv[]) {
 	BOOL bResult;
 	PROCESS_INFORMATION pi;
 
-	EnablePrivileges(SE_ASSIGNPRIMARYTOKEN_NAME);
+	if (!EnablePrivileges(SE_ASSIGNPRIMARYTOKEN_NAME)) {
+		printf("Enable privilege failed %d\n", GetLastError());
+	}
 
 	hJob = CraftJobObject(cfg);
 	if (!hJob) {

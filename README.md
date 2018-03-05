@@ -30,7 +30,9 @@
     "integrity_level": "mid",
 
 	"restricted_token": true,
-	"remove_priv": true,
+	"remove_all_priv": true,
+	"remove_privs": [
+	],
 	"deny_sids": [
 	],
 	"restrict_sids": [

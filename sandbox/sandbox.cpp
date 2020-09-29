@@ -1,4 +1,3 @@
-
 #include "stdafx.h"
 #include <Windows.h>
 #include <cstring>
@@ -8,6 +7,7 @@
 #include <Sddl.h>
 #include "ConfigFile.h"
 #include <strsafe.h>
+#include <vector>
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Helpers
@@ -20,7 +20,7 @@
 #endif
 
 void usage(char* arg0) {
-	printf("Usage : %s sandbox_profile target_program\n", arg0);
+	printf("Usage : %s sandbox_profile target_program args\n", arg0);
 }
 
 void fatal(const char* str) {
@@ -470,6 +470,15 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::string appline(argv[2], argv[2] + strlen(argv[2]));
+	std::vector<std::string> args;
+	for (int i = 3; i < argc; i++) {
+		args.push_back(std::string(argv[i]));
+	}
+	std::string cmdline = appline.c_str();
+	for (int i = 0; i < args.size(); i++) {
+		cmdline += " ";
+		cmdline += args[i];
+	}
 
 	ConfigFile cfg(argv[1]);
 	LPPROC_THREAD_ATTRIBUTE_LIST pptal = NULL;
@@ -508,6 +517,10 @@ int main(int argc, char* argv[]) {
 	si.lpAttributeList = pptal;
 
 	std::wstring applinew(appline.begin(), appline.end());
+	std::wstring cmdlinew(cmdline.begin(), cmdline.end());
+
+	WCHAR* buffer = reinterpret_cast<WCHAR*>(halloc(cmdlinew.size() * sizeof(WCHAR) + 2));
+	memcpy(buffer, cmdlinew.c_str(), sizeof(WCHAR) * cmdlinew.size());
 	if (hToken == NULL) {
 		std::string user = cfg.getString("user");
 		std::string password = cfg.getString("password");
@@ -518,13 +531,13 @@ int main(int argc, char* argv[]) {
 		std::wstring userw(user.begin(), user.end());
 		std::wstring passwordw(password.begin(), password.end());
 
-		bResult = CreateProcessWithLogonW(userw.c_str(), TEXT("."), passwordw.c_str(), 0, applinew.c_str(), NULL, CREATE_SUSPENDED, NULL, NULL, &si.StartupInfo, &pi);
+		bResult = CreateProcessWithLogonW(userw.c_str(), TEXT("."), passwordw.c_str(), 0, applinew.c_str(), buffer, CREATE_SUSPENDED, NULL, NULL, &si.StartupInfo, &pi);
 		if (!bResult) {
 			fatal("CreateProcessWithLogonW");
 		}
 	}
 	else {
-		bResult = CreateProcessAsUser(hToken, applinew.c_str(), NULL, NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, NULL, NULL, &si.StartupInfo, &pi);
+		bResult = CreateProcessAsUser(hToken, applinew.c_str(), buffer, NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, NULL, NULL, &si.StartupInfo, &pi);
 		if (!bResult) {
 			fatal("CreateProcessAsUser");
 		}
